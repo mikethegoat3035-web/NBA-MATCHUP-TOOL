@@ -13,6 +13,7 @@ import streamlit as st
 import pandas as pd
 from nba_prop_model_combined import (
     pull_synergy_playtypes, pull_player_usage_and_minutes,
+    pull_advanced_rebounding_stats, pull_advanced_passing_stats,
     NBA_PLAY_TYPES, NBA_PROP_PLAYTYPE_MAP, NBA_NON_PLAYTYPE_PROPS,
 )
 
@@ -47,6 +48,26 @@ if st.button("Pull real player usage data"):
             usage_df = pull_player_usage_and_minutes(season=season)
             st.success(f"Real connection confirmed - {len(usage_df)} players pulled.")
             st.dataframe(usage_df.head(20))
+        except Exception as e:
+            st.error(f"Real connection failed: {e}")
+
+st.header("Step 3 — Test real, advanced rebounding metrics")
+if st.button("Pull real advanced rebounding data"):
+    with st.spinner("Pulling real, live rebounding-tracking data..."):
+        try:
+            reb_df = pull_advanced_rebounding_stats(season=season)
+            st.success(f"Real connection confirmed - {len(reb_df)} players pulled.")
+            st.dataframe(reb_df.head(20))
+        except Exception as e:
+            st.error(f"Real connection failed: {e}")
+
+st.header("Step 4 — Test real, advanced passing/assist metrics")
+if st.button("Pull real advanced passing data"):
+    with st.spinner("Pulling real, live passing-tracking data..."):
+        try:
+            pass_df = pull_advanced_passing_stats(season=season)
+            st.success(f"Real connection confirmed - {len(pass_df)} players pulled.")
+            st.dataframe(pass_df.head(20))
         except Exception as e:
             st.error(f"Real connection failed: {e}")
 
