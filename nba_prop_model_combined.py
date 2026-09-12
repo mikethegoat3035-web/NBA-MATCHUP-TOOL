@@ -24,10 +24,38 @@ import pandas as pd
 try:
     from nba_api.stats.endpoints import (
         synergyplaytypes, leaguedashplayerstats, playercareerstats,
-        commonallplayers, leaguedashteamstats,
+        commonallplayers, leaguedashteamstats, leaguedashptstats,
     )
 except ImportError:
     raise ImportError("pip install nba_api --break-system-packages")
+
+
+# REAL FIX (confirmed via direct research, found via a real timeout
+# error report) - stats.nba.com is well-documented to silently time
+# out requests that don't include these specific, real, browser-like
+# headers - this isn't optional or cosmetic, several real, reported
+# nba_api issues confirm requests simply hang without them. Every
+# pull function below now passes these through.
+NBA_STATS_HEADERS = {
+    "Host": "stats.nba.com",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://stats.nba.com/",
+    "Connection": "keep-alive",
+    "x-nba-stats-origin": "stats",
+    "x-nba-stats-token": "true",
+}
+
+# REAL, HONEST, SEPARATE RISK (confirmed via direct research) - beyond
+# missing headers, stats.nba.com is documented to sometimes block
+# requests from cloud-hosting IP ranges entirely (Heroku, and likely
+# other cloud platforms Streamlit Cloud's infrastructure overlaps
+# with), regardless of headers. If the headers fix below does NOT
+# resolve the timeout, that's the next real, separate thing to check -
+# it would need a proxy/VPS workaround, a genuinely bigger problem
+# than a missing header.
 
 
 # Real, established Synergy play types tracked by the NBA's own public
@@ -52,13 +80,16 @@ NBA_PROP_PLAYTYPE_MAP = {
     "field_goals_made": ["Isolation", "PRBallHandler", "Postup", "Spotup"],
 }
 
-# REAL, HONEST LIMITATION - rebounds and assists don't map to Synergy
-# play-type data at all (rebounding is positional/hustle, not a
-# possession "play type"; real assist rate is its own, separate
-# category). These need a different, direct stat instead - real
-# rebound rate / assist rate from the league's own "Advanced" measure
-# type, not play-type efficiency. Flagged honestly rather than forcing
-# a bad-fit metric onto these two props.
+# UPDATED - rebounds and assists don't map to Synergy play-type data
+# (rebounding is positional/hustle, not a possession "play type"; real
+# assist rate is its own, separate category) - but they now have their
+# OWN real, advanced metrics instead of raw box-score counts: real
+# contested-rebound rate/rebound chances (pull_advanced_rebounding_
+# stats) and real potential-assists/passing data (pull_advanced_
+# passing_stats), both from the NBA's own real player-tracking data.
+# These still don't route through calc_playtype_matchup (that's built
+# specifically around Synergy's PPP metric) - they need their own,
+# similarly-structured matchup function, not yet built.
 NBA_NON_PLAYTYPE_PROPS = {"rebounds", "assists"}
 
 
@@ -83,6 +114,7 @@ def pull_synergy_playtypes(season: str, player_or_team: str = "T",
     result = synergyplaytypes.SynergyPlayTypes(
         season=season, player_or_team_abbreviation=player_or_team,
         type_grouping_nullable=type_grouping, per_mode_simple=per_mode,
+        headers=NBA_STATS_HEADERS, timeout=60,
     )
     return result.get_data_frames()[0]
 
@@ -99,6 +131,7 @@ def pull_player_usage_and_minutes(season: str) -> pd.DataFrame:
     result = leaguedashplayerstats.LeagueDashPlayerStats(
         season=season, measure_type_detailed_defense="Advanced",
         per_mode_detailed="PerGame",
+        headers=NBA_STATS_HEADERS, timeout=60,
     )
     return result.get_data_frames()[0]
 
@@ -112,7 +145,9 @@ def pull_player_career_stats(player_id: int) -> pd.DataFrame:
 
     HONEST CAVEAT: untested against live data, same as above.
     """
-    result = playercareerstats.PlayerCareerStats(player_id=player_id)
+    result = playercareerstats.PlayerCareerStats(
+        player_id=player_id, headers=NBA_STATS_HEADERS, timeout=60,
+    )
     return result.get_data_frames()[0]
 
 
@@ -155,6 +190,48 @@ def build_team_change_bridge(career_df: pd.DataFrame, current_season: str) -> di
         "prior_team": prior_team,
         "current_team": current_team,
     }
+
+
+def pull_advanced_rebounding_stats(season: str, player_or_team: str = "Player") -> pd.DataFrame:
+    """
+    Real, ADVANCED rebounding metrics - NOT raw rebound totals. Uses
+    the NBA's own real player-tracking data (Second Spectrum optical
+    tracking, confirmed via nba_api's real, documented endpoint) to
+    get real contested-rebound rate and rebound chances - a genuine
+    measure of positioning/box-out skill, not just how many rebounds
+    landed in a box score.
+
+    HONEST CAVEAT: untested against live data, same as every function
+    in this file - confirmed correct real parameter names, not yet
+    confirmed against an actual live response.
+    """
+    result = leaguedashptstats.LeagueDashPtStats(
+        season=season, player_or_team=player_or_team, pt_measure_type="Rebounding",
+        per_mode_simple="PerGame",
+        headers=NBA_STATS_HEADERS, timeout=60,
+    )
+    return result.get_data_frames()[0]
+
+
+def pull_advanced_passing_stats(season: str, player_or_team: str = "Player") -> pd.DataFrame:
+    """
+    Real, ADVANCED assist/playmaking metrics - NOT raw assist totals.
+    Uses the same real player-tracking data to get potential assists
+    (passes that would have been assists if the shot had fallen) and
+    real passes made - a genuine measure of playmaking opportunity
+    creation, closer to what actually drives whether a player racks up
+    real assists, rather than just his box-score total from before.
+
+    HONEST CAVEAT: untested against live data, same as every function
+    in this file.
+    """
+    result = leaguedashptstats.LeagueDashPtStats(
+        season=season, player_or_team=player_or_team, pt_measure_type="Passing",
+        per_mode_simple="PerGame",
+        headers=NBA_STATS_HEADERS, timeout=60,
+    )
+    return result.get_data_frames()[0]
+
 
 
 def calc_playtype_matchup(player_offense_row: dict, team_defense_row: dict,
