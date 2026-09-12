@@ -11,7 +11,7 @@ Stage 2 scanning UI to match what the MLB and NFL tools already do.
 
 import streamlit as st
 import pandas as pd
-from NBA_MODEL_COMBINED import (
+from nba_prop_model_combined import (
     pull_synergy_playtypes, pull_player_usage_and_minutes,
     NBA_PLAY_TYPES, NBA_PROP_PLAYTYPE_MAP, NBA_NON_PLAYTYPE_PROPS,
 )
